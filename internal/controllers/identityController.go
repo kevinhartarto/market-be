@@ -1,13 +1,14 @@
 package controllers
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/kevinhartarto/market-be/internal/database"
 	"github.com/kevinhartarto/market-be/internal/models"
 	"github.com/kevinhartarto/market-be/internal/utils"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 // Identity Controller represent a service that handle all things related to Identity
@@ -35,20 +36,21 @@ type IdentityController interface {
 }
 
 type identityController struct {
-	db    gorm.DB
-	redis redis.Client
+	db    database.Service
+	redis *redis.Client
 }
 
 type tempUser struct {
-	email    string `json:"email"`
-	password string `json:"password"`
+	email    string
+	password string
 }
 
 var (
 	controllerInstance *identityController
 )
+var SecretKey = []byte("SecretKey")
 
-func NewIdentityController(db gorm.DB, redis redis.Client) IdentityController {
+func NewIdentityController(db database.Service, redis *redis.Client) IdentityController {
 
 	if controllerInstance != nil {
 		return controllerInstance
@@ -109,15 +111,25 @@ func (ic *identityController) Login(c *fiber.Ctx, db database.Service) error {
 		return err
 	}
 
-	if err := db.UseGorm().Where("email = ? and active", user.Id).First(&user).Error; err != nil {
+	if err := db.UseGorm().Where("email = ? and active", tempUser.email).First(&user).Error; err != nil {
 		return err
 	}
 
-	if err := utils.VerifyPassword(tempUser.password, user.Password).Error; err != nil {
+	err := utils.VerifyPassword(tempUser.password, user.Password).Error
+	if err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
 	}
 
-	return c.Redirect("/")
+	tokenString := utils.GenerateJWT(user.Email, user.Role)
+	if tokenString == "" {
+		return fiber.NewError(fiber.StatusBadRequest)
+	}
+
+	hashString := utils.HashRole(user.Role.String())
+	result := ic.redis.SetNX(c.Context(), hashString, tokenString, 0)
+	fmt.Printf("Result from redis: %s", result)
+
+	return c.JSON(fiber.Map{"token": tokenString})
 }
 
 func (ic *identityController) Deactivate(c *fiber.Ctx, db database.Service) error {
@@ -144,10 +156,37 @@ func (ic *identityController) CreateRole(c *fiber.Ctx, db database.Service) erro
 	return db.UseGorm().Create(&role).Error
 }
 
+func (ic *identityController) GetRoleUUID(roleName string, db database.Service) uuid.UUID {
+	role := new(models.Role)
+
+	if err := db.UseGorm().Where("role = ? ", roleName).First(&role).Error; err != nil {
+		panic("Unable to get role")
+	}
+
+	return role.Id
+}
+
+func GetRolesUUID(db database.Service) uuid.UUIDs {
+	var (
+		roles []models.Role
+		UUIDs uuid.UUIDs
+	)
+
+	if err := db.UseGorm().Find(&roles).Error; err != nil {
+		panic("Unable to get roles")
+	}
+
+	for _, role := range roles {
+		UUIDs = append(UUIDs, role.Id)
+	}
+
+	return UUIDs
+}
+
 func getRole(db database.Service, roleName string) uuid.UUID {
 	role := new(models.Role)
 
-	if err := db.UseGorm().Where("role = ?", role.Role).First(&role).Error; err != nil {
+	if err := db.UseGorm().Where("role = ? and is not deprecated", roleName).First(&role).Error; err != nil {
 		panic("Unable to get role")
 	}
 

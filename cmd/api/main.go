@@ -10,13 +10,13 @@ import (
 	"github.com/kevinhartarto/market-be/internal/server"
 )
 
+var ctx = context.Background()
+
 func main() {
 
-	var ctx context.Context
-
 	db := database.StartDB()
-	app := server.NewHandler(db)
 	redis := server.StartRedis()
+	app := server.NewHandler(db, redis)
 
 	port := os.Getenv("API_PORT")
 	if port == "" {

@@ -19,13 +19,20 @@ type User struct {
 
 type Role struct {
 	Id          uuid.UUID   `json:"id" gorm:"primaryKey"` // Referenced by Permission id
-	Role        string      `json:"role"`
+	Name        string      `json:"role"`
 	Permissions Permissions `json:"permissions"`
+	ExpiryTime  time.Time   `json:"expiry_time"`
+	Deprecated  bool        `json:"deprecated"`
 }
 
 type Permissions struct {
-	Id       uuid.UUID `json:"id" gorm:"primaryKey"` // Referencing Role UUID
-	IsViewer bool      `json:"viewer"`
-	IsAdmin  bool      `json:"admin"`
-	IsOwner  bool      `json:"owner"`
+	Id          uuid.UUID `json:"id" gorm:"primaryKey"` // Referencing Role UUID
+	CanView     bool      `json:"can_view"`
+	CanEdit     bool      `json:"can_edit"`
+	CanBuy      bool      `json:"can_buy"`
+	CanDelete   bool      `json:"can_delete"`
+	CanWishlist bool      `json:"can_wishlist"`
+	CanAdd      bool      `json:"can_add"`
+	IsAdmin     bool      `json:"admin"`
+	IsOwner     bool      `json:"owner"`
 }
