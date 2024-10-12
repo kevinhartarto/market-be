@@ -51,7 +51,7 @@ func GenerateJWT(email string, role uuid.UUID) string {
 	return tokenString
 }
 
-func HashRole(role string) string {
+func HashString(role string) string {
 
 	objStr := fmt.Sprintf("%+v", role)
 	data := []byte(objStr)

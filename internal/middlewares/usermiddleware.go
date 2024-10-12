@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -8,9 +9,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/kevinhartarto/market-be/internal/controllers"
 	"github.com/kevinhartarto/market-be/internal/database"
+	"github.com/kevinhartarto/market-be/internal/utils"
+	"github.com/redis/go-redis/v9"
 )
 
-var jwtKey = []byte("e7185081-044a-4b23-ae05-95e18110607d")
+var SecretKey = []byte("e7185081-044a-4b23-ae05-95e18110607d")
+
+type UserMiddleware struct {
+	ctx   context.Context
+	redis *redis.Client
+}
+
+func NewUserMiddleware(ctx context.Context, redisClient redis.Client) *UserMiddleware {
+	return &UserMiddleware{
+		ctx:   ctx,
+		redis: &redisClient,
+	}
+}
 
 type UserClaims struct {
 	Email string    `json:"email"`
@@ -18,7 +33,7 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-func Authorize(allowedRoles []string, db database.Service) fiber.Handler {
+func (um *UserMiddleware) Authorize(allowedRoles []string, db database.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenString := c.Get("Authorization")
 		if tokenString == "" {
@@ -29,7 +44,7 @@ func Authorize(allowedRoles []string, db database.Service) fiber.Handler {
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 		token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(t *jwt.Token) (interface{}, error) {
-			return jwtKey, nil
+			return SecretKey, nil
 		})
 		if err != nil || !token.Valid {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -39,6 +54,18 @@ func Authorize(allowedRoles []string, db database.Service) fiber.Handler {
 
 		claims, ok := token.Claims.(*UserClaims)
 		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
+		}
+
+		key := utils.HashString(claims.Email)
+		value, err := um.redis.Get(um.ctx, key).Result()
+		if err != nil {
+			return err
+		}
+
+		if value != tokenString {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Invalid token",
 			})

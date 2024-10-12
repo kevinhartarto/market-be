@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/kevinhartarto/market-be/internal/database"
 	"github.com/kevinhartarto/market-be/internal/server"
 )
