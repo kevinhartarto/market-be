@@ -7,13 +7,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"github.com/kevinhartarto/market-be/internal/controllers"
 	"github.com/kevinhartarto/market-be/internal/database"
+	"github.com/kevinhartarto/market-be/internal/models"
 	"github.com/kevinhartarto/market-be/internal/utils"
 	"github.com/redis/go-redis/v9"
 )
 
-var SecretKey = []byte("e7185081-044a-4b23-ae05-95e18110607d")
+var (
+	SecretKey = []byte("e7185081-044a-4b23-ae05-95e18110607d")
+	Roles     = "roles"
+)
 
 type UserMiddleware struct {
 	ctx   context.Context
@@ -71,11 +74,14 @@ func (um *UserMiddleware) Authorize(allowedRoles []string, db database.Service) 
 			})
 		}
 
-		rolesUUID := controllers.GetRolesUUID(db)
+		var roles []models.Role
+		if err := um.redis.HGetAll(um.ctx, Roles).Scan(&roles); err != nil {
+			return err
+		}
 
 		hasRole := false
-		for _, roleUUID := range rolesUUID {
-			if claims.Role == roleUUID {
+		for _, role := range roles {
+			if claims.Role == role.Id {
 				hasRole = true
 				break
 			}

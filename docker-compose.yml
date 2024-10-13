@@ -21,20 +21,20 @@ services:
     env_file:
       - .env
     restart: always
-  market:
-    image: dev_market_be
-    container_name: dev-market
-    environment:
-      DB_HOST: "postgres"
-      REDIS_URL: "redis"
-      DB_USERNAME: developer
-      DB_DATABASE: devstack
-      DB_PASSWORD: localTest01
-      DB_PORT: 5432
-      API_PORT: 3030
-      REDIS_PORT: 6379
-    ports:
-      - "3030:3030"
+  # market:
+  #   image: dev_market_be
+  #   container_name: dev-market
+  #   environment:
+  #     DB_HOST: "postgres"
+  #     REDIS_URL: "redis"
+  #     DB_USERNAME: developer
+  #     DB_DATABASE: devstack
+  #     DB_PASSWORD: localTest01
+  #     DB_PORT: 5432
+  #     API_PORT: 3030
+  #     REDIS_PORT: 6379
+  #   ports:
+  #     - "3030:3030"
   redis:
     image: "redis:latest"
     container_name: dev-redis

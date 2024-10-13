@@ -6,12 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
-type User struct {
-	Id        uuid.UUID `json:"id" gorm:"primaryKey"`
+type Account struct {
+	Id        uuid.UUID `json:"id" gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
 	Password  string    `json:"password"`
-	Role      uuid.UUID `json:"role" gorm:"foreignKey:RoleId"`
+	Role      uuid.UUID `json:"role"`
 	Verified  bool      `json:"verified"`
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
@@ -19,7 +19,7 @@ type User struct {
 }
 
 type Role struct {
-	Id          uuid.UUID `json:"id" gorm:"primaryKey"`
+	Id          uuid.UUID `json:"id" gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
 	Name        string    `json:"name"`
 	CanView     bool      `json:"can_view"`
 	CanAdd      bool      `json:"can_add"`

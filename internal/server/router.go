@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/healthcheck"
@@ -11,6 +14,7 @@ import (
 )
 
 func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
+	context := context.Background()
 	app := fiber.New()
 
 	app.Use(healthcheck.New())
@@ -22,26 +26,59 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 	marketAPI := app.Group("/api")
 
 	// Login and Register APIs
-	identity := controllers.NewIdentityController(db, redis)
+	account := controllers.NewAccountController(db, redis)
+	account.GetAllRoles(context)
+	fmt.Println("Roles loaded")
 
-	identityAPI := marketAPI.Group("/user")
-	identityAPI.Post("/login", func(c *fiber.Ctx) error {
-		return identity.Login(c)
+	accountAPI := marketAPI.Group("/user")
+	accountAPI.Get("/", func(c *fiber.Ctx) error {
+		return account.ShowAccountDetails(c)
 	})
-	identityAPI.Post("/register", func(c *fiber.Ctx) error {
-		return identity.CreateUser(c)
+	accountAPI.Post("/login", func(c *fiber.Ctx) error {
+		return account.Login(c)
 	})
-	identityAPI.Delete("/delete", func(c *fiber.Ctx) error {
-		return identity.Deactivate(c)
+	accountAPI.Post("/register", func(c *fiber.Ctx) error {
+		return account.CreateAccount(c)
+	})
+	accountAPI.Put("/update", func(c *fiber.Ctx) error {
+		return account.UpdateAccount(c)
+	})
+	accountAPI.Put("/verify", func(c *fiber.Ctx) error {
+		return account.ChangeRole(c)
+	})
+	accountAPI.Delete("/delete", func(c *fiber.Ctx) error {
+		return account.Deactivate(c)
 	})
 
-	// For Roles higher than viewer
-	superUserAPI := identityAPI.Group("/super")
+	// For admin and owner roles
+	superUserAPI := accountAPI.Group("/super")
+	superUserAPI.Get("/reload", func(c *fiber.Ctx) error {
+		account.GetAllRoles(context)
+		return c.SendStatus(fiber.StatusOK)
+	})
 	superUserAPI.Post("/register", func(c *fiber.Ctx) error {
-		return identity.CreateAdmin(c)
+		return account.CreateAdmin(c)
 	})
 	superUserAPI.Post("/role", func(c *fiber.Ctx) error {
-		return identity.CreateRole(c)
+		return account.CreateRole(c)
+	})
+	superUserAPI.Put("/permissions", func(c *fiber.Ctx) error {
+		return account.ChangeRolePermissions(c)
+	})
+	superUserAPI.Put("/elevate", func(c *fiber.Ctx) error {
+		return account.SetRoleToAdmin(c)
+	})
+
+	// Cart
+	cart := controllers.NewCartController(db, redis)
+	marketAPI.Put("/cart", func(c *fiber.Ctx) error {
+		return cart.UpdateCart(c)
+	})
+
+	product := controllers.NewProductController(db, redis)
+	productAPI := marketAPI.Group("/product")
+	productAPI.Get("/", func(c *fiber.Ctx) error {
+		return product.GetAllProducts(c)
 	})
 
 	return app
