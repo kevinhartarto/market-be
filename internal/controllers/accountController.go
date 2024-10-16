@@ -106,8 +106,7 @@ func (ac *accountController) Login(c *fiber.Ctx) error {
 		return err
 	}
 
-	err := utils.VerifyPassword(tempAccount.password, Account.Password)
-	if err != nil {
+	if err := utils.VerifyPassword(tempAccount.password, Account.Password); err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
 	}
 
