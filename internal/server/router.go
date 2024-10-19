@@ -32,7 +32,7 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 
 	accountAPI := marketAPI.Group("/user")
 	accountAPI.Get("/", func(c *fiber.Ctx) error {
-		return account.ShowAccountDetails(c)
+		return account.GetAccount(c)
 	})
 	accountAPI.Post("/login", func(c *fiber.Ctx) error {
 		return account.Login(c)
@@ -41,13 +41,13 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 		return account.CreateAccount(c)
 	})
 	accountAPI.Put("/update", func(c *fiber.Ctx) error {
-		return account.UpdateAccount(c)
+		return account.UpdateAccount(c, "update")
 	})
 	accountAPI.Put("/verify", func(c *fiber.Ctx) error {
-		return account.ChangeRole(c)
+		return account.UpdateAccount(c, "verified")
 	})
 	accountAPI.Delete("/delete", func(c *fiber.Ctx) error {
-		return account.Deactivate(c)
+		return account.UpdateAccount(c, "delete")
 	})
 
 	// For admin and owner roles
@@ -56,17 +56,17 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 		account.GetAllRoles(context)
 		return c.SendStatus(fiber.StatusOK)
 	})
-	superUserAPI.Post("/register", func(c *fiber.Ctx) error {
-		return account.CreateAdmin(c)
-	})
 	superUserAPI.Post("/role", func(c *fiber.Ctx) error {
 		return account.CreateRole(c)
 	})
 	superUserAPI.Put("/permissions", func(c *fiber.Ctx) error {
-		return account.ChangeRolePermissions(c)
+		return account.UpdateRole(c, "update")
 	})
-	superUserAPI.Put("/elevate", func(c *fiber.Ctx) error {
-		return account.SetRoleToAdmin(c)
+	superUserAPI.Put("/upgrade", func(c *fiber.Ctx) error {
+		return account.UpdateRole(c, "upgrade")
+	})
+	superUserAPI.Put("/delete", func(c *fiber.Ctx) error {
+		return account.UpdateRole(c, "delete")
 	})
 
 	// Cart
@@ -75,11 +75,11 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 		return cart.UpdateCart(c)
 	})
 
-	product := controllers.NewProductController(db, redis)
-	productAPI := marketAPI.Group("/product")
-	productAPI.Get("/", func(c *fiber.Ctx) error {
-		return product.GetAllProducts(c)
-	})
+	// product := controllers.NewProductController(db, redis)
+	// productAPI := marketAPI.Group("/product")
+	// productAPI.Get("/", func(c *fiber.Ctx) error {
+	// 	return product.GetAllProducts(c)
+	// })
 
 	return app
 }

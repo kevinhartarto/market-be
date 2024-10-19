@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
@@ -19,49 +20,36 @@ type AccountController interface {
 	// returns an error if the identity cannot be identified.
 	Login(c *fiber.Ctx) error
 
-	// Deactivate an identity.
-	// returns an error if the identity not found.
-	Deactivate(c *fiber.Ctx) error
-
-	// Create an admin identity.
-	// returns an error if the identity cannot be created or already exists.
-	CreateAdmin(c *fiber.Ctx) error
-
 	// Create an Account identity.
 	// returns an error if the identity cannot be created or already exists.
 	CreateAccount(c *fiber.Ctx) error
 
 	// Update an Account
 	// returns an error if the identity cannot be updated or does not exists.
-	UpdateAccount(c *fiber.Ctx) error
+	UpdateAccount(c *fiber.Ctx, updateType string) error
 
 	// Get Account by Id
 	// returns an error if unable to find the Account
-	ShowAccountDetails(c *fiber.Ctx) error
+	GetAccount(c *fiber.Ctx) error
+
+	// Get all roles
+	GetAllRoles(ctx context.Context)
 
 	// Create an identity role.
 	// returns an error if similar role exits
 	CreateRole(c *fiber.Ctx) error
 
-	// Change Account's role
-	// return an error if it failed to update Account's role
-	ChangeRole(c *fiber.Ctx) error
-
-	// Redefine role's permissions
+	// Update a role
 	// return an error if the role not found
-	ChangeRolePermissions(c *fiber.Ctx) error
-
-	// Upgrade Role permissions to admin
-	SetRoleToAdmin(c *fiber.Ctx) error
-
-	DeleteRole(c *fiber.Ctx) error
-
-	GetAllRoles(ctx context.Context)
+	UpdateRole(c *fiber.Ctx, updateType string) error
 }
 
 var (
 	accountInstance *accountController
-	Roles           = "roles"
+	rolesKey        = "roles"
+	unverified      = "unverified"
+	verified        = "verified"
+	admin           = "Admin"
 )
 
 type accountController struct {
@@ -70,7 +58,7 @@ type accountController struct {
 }
 
 // Temporary Account for login credentials check
-type tempAccount struct {
+type loginCredentials struct {
 	email    string
 	password string
 }
@@ -95,108 +83,115 @@ func NewAccountController(db database.Service, redis *redis.Client) *accountCont
 }
 
 func (ac *accountController) Login(c *fiber.Ctx) error {
-	tempAccount := new(tempAccount)
-	Account := new(models.Account)
+	loginCreds := new(loginCredentials)
+	account := new(models.Account)
 
-	if err := c.BodyParser(&tempAccount); err != nil {
+	if err := c.BodyParser(&loginCreds); err != nil {
 		return err
 	}
 
-	if err := ac.db.UseGorm().Where("email = ? and active", tempAccount.email).First(&Account).Error; err != nil {
+	if err := ac.db.UseGorm().Where("email = ? and active", loginCreds.email).First(&account).Error; err != nil {
 		return err
 	}
 
-	if err := utils.VerifyPassword(tempAccount.password, Account.Password); err != nil {
+	if err := utils.VerifyPassword(loginCreds.password, account.Password); err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
 	}
 
-	tokenString := utils.GenerateJWT(Account.Email, Account.Role)
+	tokenString := utils.GenerateJWT(account.Email, account.Role)
 	if tokenString == "" {
 		return fiber.NewError(fiber.StatusBadRequest)
 	}
 
-	hashString := utils.HashString(Account.Email)
+	hashString := utils.HashString(account.Email)
 	result := ac.redis.SetNX(c.Context(), hashString, tokenString, 0)
 	fmt.Printf("Result from redis: %s", result)
 
 	return c.JSON(fiber.Map{"token": tokenString})
 }
 
-func (ac *accountController) Deactivate(c *fiber.Ctx) error {
-	role := new(models.Role)
-
-	if err := c.BodyParser(&role); err != nil {
-		return err
-	}
-
-	if err := ac.db.UseGorm().First(&role, role.Id).Error; err != nil {
-		return err
-	}
-
-	return ac.db.UseGorm().Model(&role).Update("Active", false).Error
-}
-
-func (ac *accountController) CreateAdmin(c *fiber.Ctx) error {
-	Account := new(models.Account)
-
-	if err := c.BodyParser(Account); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "Bad Request")
-	}
-
-	Account.Id = uuid.New()
-	Account.Role = getRole(c.Context(), *ac.redis, ac.db, "admin")
-	Account.Verified = false
-	Account.Active = true
-
-	return ac.db.UseGorm().Create(&Account).Error
-}
-
 func (ac *accountController) CreateAccount(c *fiber.Ctx) error {
-	Account := new(models.Account)
+	account := new(models.Account)
 
-	if err := c.BodyParser(&Account); err != nil {
+	if err := c.BodyParser(&account); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Bad Request")
 	}
 
 	// Hash the password for the Account
-	hashedPassword, err := utils.HashPassword(Account.Password)
+	hashedPassword, err := utils.HashPassword(account.Password)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Server Error")
 	}
 
-	if Account.Id == uuid.Nil {
-		Account.Id = uuid.New()
+	if account.Id == uuid.Nil {
+		account.Id = uuid.New()
 	}
 
-	Account.Password = hashedPassword
-	Account.Role = getRole(c.Context(), *ac.redis, ac.db, "normal")
-	Account.Verified = false
-	Account.Active = true
+	account.Password = hashedPassword
+	account.Role = getRole(c.Context(), *ac.redis, ac.db, unverified)
+	account.Verified = false
+	account.Active = true
 
-	return ac.db.UseGorm().Create(&Account).Error
-}
-
-func (ac *accountController) UpdateAccount(c *fiber.Ctx) error {
-	Account := new(models.Role)
-
-	if err := c.BodyParser(&Account); err != nil {
+	if err := ac.db.UseGorm().Create(&account).Error; err != nil {
 		return err
 	}
 
-	return ac.db.UseGorm().Save(&Account).Error
+	result, _ := json.Marshal(&account)
+	return c.SendString(string(result))
 }
 
-func (ac *accountController) ShowAccountDetails(c *fiber.Ctx) error {
-	AccountId := c.Query("id")
-	Account := new(models.Account)
+func (ac *accountController) UpdateAccount(c *fiber.Ctx, updateType string) error {
+	account := new(models.Role)
 
-	if AccountId == "" {
+	if err := c.BodyParser(&account); err != nil {
+		return err
+	}
+
+	success := false
+	dbConn := ac.db.UseGorm()
+	var affectedRows int64
+
+	switch updateType {
+	case "update":
+		affectedRows = dbConn.Save(&account).RowsAffected
+	case "delete":
+		affectedRows = dbConn.Model(&account).Update("Active", false).RowsAffected
+	case "verified":
+		var newRole = getRole(c.Context(), *ac.redis, ac.db, verified)
+		affectedRows = dbConn.Model(&account).Update("role", newRole).RowsAffected
+	}
+
+	// This is not a batch updates
+	// Expect only 1 row changed
+	if affectedRows == 1 {
+		success = true
+	}
+	result, _ := json.Marshal(&account)
+
+	if success {
+		return c.SendString(string(result))
+	} else {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
+}
+
+func (ac *accountController) GetAccount(c *fiber.Ctx) error {
+	accountId := c.Query("id")
+	account := new(models.Account)
+
+	if accountId == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid Request",
 		})
 	}
 
-	return ac.db.UseGorm().First(&Account, AccountId).Error
+	if err := ac.db.UseGorm().First(&account, accountId); err != nil {
+		return c.SendString("error: Unable to find account")
+	}
+
+	result, _ := json.Marshal(&account)
+
+	return c.SendString(string(result))
 }
 
 func (ac *accountController) CreateRole(c *fiber.Ctx) error {
@@ -210,80 +205,59 @@ func (ac *accountController) CreateRole(c *fiber.Ctx) error {
 		role.Id = uuid.New()
 	}
 
-	return ac.db.UseGorm().Create(&role).Error
+	if err := ac.db.UseGorm().Create(&role).Error; err != nil {
+		return err
+	}
+
+	return c.SendString("Role " + role.Name + " created (" + role.Id.String() + ").")
 }
 
-func (ac *accountController) ChangeRole(c *fiber.Ctx) error {
-	var tempRoleChanger roleChanger
-
-	if err := c.BodyParser(&tempRoleChanger); err != nil {
-		return err
-	}
-
-	role := new(models.Role)
-	if err := ac.db.UseGorm().Where("name = ?", tempRoleChanger.role).Find(&role).Error; err != nil {
-		return err
-	}
-
-	Account := tempRoleChanger.account
-	if err := ac.db.UseGorm().First(&Account).Error; err != nil {
-		return err
-	}
-
-	Account.Role = role.Id
-
-	return ac.db.UseGorm().Save(&Account).Error
-}
-
-func (ac *accountController) ChangeRolePermissions(c *fiber.Ctx) error {
+func (ac *accountController) UpdateRole(c *fiber.Ctx, updateType string) error {
 	role := new(models.Role)
 
 	if err := c.BodyParser(&role); err != nil {
 		return err
 	}
 
-	return ac.db.UseGorm().Save(&role).Error
-}
+	success := false
+	dbConn := ac.db.UseGorm()
+	var affectedRows int64
 
-func (ac *accountController) SetRoleToAdmin(c *fiber.Ctx) error {
-	role := new(models.Role)
-	roleId := c.Query("Id")
-
-	if roleId == "" {
-		return c.SendStatus(fiber.ErrBadRequest.Code)
+	switch updateType {
+	case "update":
+		affectedRows = dbConn.Save(&role).RowsAffected
+	case "upgrade":
+		affectedRows = dbConn.Model(&role).Update("is_admin", true).RowsAffected
+	case "delete":
+		affectedRows = dbConn.Model(&role).Update("Active", false).RowsAffected
 	}
 
-	if err := ac.db.UseGorm().First(&role, roleId).Error; err != nil {
-		return err
+	// This is not a batch updates
+	// Expect only 1 row changed
+	if affectedRows == 1 {
+		success = true
 	}
+	result, _ := json.Marshal(&role)
 
-	role.IsAdmin = true
-
-	return ac.db.UseGorm().Save(&role).Error
-}
-
-func (ac *accountController) DeleteRole(c *fiber.Ctx) error {
-	role := new(models.Role)
-
-	if err := ac.db.UseGorm().First(&role, role.Id).Error; err != nil {
-		return err
+	if success {
+		return c.SendString(string(result))
+	} else {
+		return c.SendStatus(fiber.StatusBadRequest)
 	}
-
-	return ac.db.UseGorm().Model(&role).Update("deprecated", true).Error
 }
 
 func (ac *accountController) GetAllRoles(ctx context.Context) {
 	var roles []models.Role
 
 	ac.db.UseGorm().Where("is not deprecated").Order("id asc").Find(&roles)
-	ac.redis.Set(ctx, Roles, &roles, 0)
+	ac.redis.Set(ctx, rolesKey, &roles, 0)
 }
 
 func getRole(ctx context.Context, redis redis.Client, db database.Service, roleName string) uuid.UUID {
 	var roles []models.Role
 	role := new(models.Role)
 
-	err := redis.HGetAll(ctx, Roles).Scan(&roles)
+	err := redis.HGetAll(ctx, rolesKey).Scan(&roles)
 	if err != nil {
 		fmt.Println("Roles not found in cache")
 	}

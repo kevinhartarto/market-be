@@ -20,6 +20,8 @@ type Service interface {
 
 	// Return active GORM connection
 	UseGorm() *gorm.DB
+
+	RunSQL() *sql.DB
 }
 
 type service struct {
@@ -72,6 +74,10 @@ func StartDB() Service {
 	}
 
 	return dbInstance
+}
+
+func (s *service) RunSQL() *sql.DB {
+	return s.sqlDB
 }
 
 func (s *service) UseGorm() *gorm.DB {
