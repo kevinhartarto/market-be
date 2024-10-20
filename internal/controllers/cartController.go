@@ -1,13 +1,19 @@
 package controllers
 
 import (
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/kevinhartarto/market-be/internal/database"
+	"github.com/kevinhartarto/market-be/internal/models"
 	"github.com/redis/go-redis/v9"
 )
 
 type CartController interface {
+
+	// Get cart by Id
+	GetCart(c *fiber.Ctx) error
 
 	// Add selected product(s) to cart
 	UpdateCart(c *fiber.Ctx) error
@@ -15,6 +21,7 @@ type CartController interface {
 
 var (
 	cartInstance *cartController
+	cart         models.Cart
 )
 
 type cartController struct {
@@ -39,6 +46,24 @@ func NewCartController(db database.Service, redis *redis.Client) *cartController
 	}
 
 	return cartInstance
+}
+
+func (cc *cartController) GetCart(c *fiber.Ctx) error {
+	accountId := c.Query("id")
+	if accountId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid Request",
+		})
+	}
+
+	if err := cc.db.UseGorm().First(&cart, accountId); err != nil {
+		return c.SendString("error: Unable to find account")
+	}
+
+	result, _ := json.Marshal(&cart)
+
+	return c.SendString(string(result))
+
 }
 
 func (cc *cartController) UpdateCart(c *fiber.Ctx) error {

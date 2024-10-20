@@ -41,13 +41,7 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 		return account.CreateAccount(c)
 	})
 	accountAPI.Put("/update", func(c *fiber.Ctx) error {
-		return account.UpdateAccount(c, "update")
-	})
-	accountAPI.Put("/verify", func(c *fiber.Ctx) error {
-		return account.UpdateAccount(c, "verified")
-	})
-	accountAPI.Delete("/delete", func(c *fiber.Ctx) error {
-		return account.UpdateAccount(c, "delete")
+		return account.UpdateAccount(c)
 	})
 
 	// For admin and owner roles
@@ -59,27 +53,58 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 	superUserAPI.Post("/role", func(c *fiber.Ctx) error {
 		return account.CreateRole(c)
 	})
-	superUserAPI.Put("/permissions", func(c *fiber.Ctx) error {
-		return account.UpdateRole(c, "update")
-	})
-	superUserAPI.Put("/upgrade", func(c *fiber.Ctx) error {
-		return account.UpdateRole(c, "upgrade")
-	})
-	superUserAPI.Put("/delete", func(c *fiber.Ctx) error {
-		return account.UpdateRole(c, "delete")
+	superUserAPI.Put("/update", func(c *fiber.Ctx) error {
+		return account.UpdateRole(c)
 	})
 
 	// Cart
 	cart := controllers.NewCartController(db, redis)
-	marketAPI.Put("/cart", func(c *fiber.Ctx) error {
+	cartAPI := marketAPI.Group("/cart")
+	cartAPI.Get("/", func(c *fiber.Ctx) error {
+		return cart.GetCart(c)
+	})
+	cartAPI.Put("/update", func(c *fiber.Ctx) error {
 		return cart.UpdateCart(c)
 	})
 
-	// product := controllers.NewProductController(db, redis)
-	// productAPI := marketAPI.Group("/product")
-	// productAPI.Get("/", func(c *fiber.Ctx) error {
-	// 	return product.GetAllProducts(c)
-	// })
+	product := controllers.NewProductController(db, redis)
+	productAPI := marketAPI.Group("/product")
+	productAPI.Get("/", func(c *fiber.Ctx) error {
+		return product.GetAllProducts(c)
+	})
+	productAPI.Get("/brands", func(c *fiber.Ctx) error {
+		return product.GetAllBrands(c)
+	})
+	productAPI.Get("/categories", func(c *fiber.Ctx) error {
+		return product.GetAllCategories(c)
+	})
+
+	productAPI.Get("/brand/products", func(c *fiber.Ctx) error {
+		return product.GetProductsByBrand(c)
+	})
+	productAPI.Get("/category/products", func(c *fiber.Ctx) error {
+		return product.GetProductsByCategory(c)
+	})
+
+	productAPI.Get("/detail", func(c *fiber.Ctx) error {
+		return product.GetProductDetails(c)
+	})
+	productAPI.Get("/brand/detail", func(c *fiber.Ctx) error {
+		return product.GetBrandDetails(c)
+	})
+	productAPI.Get("/category/detail", func(c *fiber.Ctx) error {
+		return product.GetCategoryDetails(c)
+	})
+
+	productAPI.Put("/update", func(c *fiber.Ctx) error {
+		return product.UpdateProduct(c)
+	})
+	productAPI.Put("/brand/update", func(c *fiber.Ctx) error {
+		return product.UpdateBrand(c)
+	})
+	productAPI.Put("/category/update", func(c *fiber.Ctx) error {
+		return product.UpdateCategory(c)
+	})
 
 	return app
 }

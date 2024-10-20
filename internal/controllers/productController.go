@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/kevinhartarto/market-be/internal/database"
 	"github.com/kevinhartarto/market-be/internal/models"
 	"github.com/redis/go-redis/v9"
@@ -12,16 +13,49 @@ import (
 type ProductController interface {
 
 	// Retrieve all products
+	GetAllBrands(c *fiber.Ctx) error
+
+	GetBrandDetails(c *fiber.Ctx) error
+
+	UpdateBrand(c *fiber.Ctx) error
+
+	GetAllCategories(c *fiber.Ctx) error
+
+	GetCategoryDetails(c *fiber.Ctx) error
+
+	UpdateCategories(c *fiber.Ctx) error
+
 	GetAllProducts(c *fiber.Ctx) error
+
+	GetProductsByBrand(c *fiber.Ctx) error
+
+	GetProductsByCategory(c *fiber.Ctx) error
+
+	GetProductDetails(c *fiber.Ctx) error
+
+	UpdateProduct(c *fiber.Ctx) error
 }
 
 var (
 	productInstance *productController
+
+	brands     []models.Brand
+	categories []models.Category
+	products   []models.Product
+
+	brand    models.Brand
+	category models.Category
+	product  models.Product
 )
 
 type productController struct {
 	db    database.Service
 	redis *redis.Client
+}
+
+type BrandToUpdate struct {
+	Id        uuid.UUID
+	NewStatus bool
 }
 
 func NewProductController(db database.Service, redis *redis.Client) *productController {
@@ -39,133 +73,175 @@ func NewProductController(db database.Service, redis *redis.Client) *productCont
 }
 
 func (pc *productController) GetAllBrands(c *fiber.Ctx) error {
-	var brands []models.Brand
 	pc.db.UseGorm().Where("active").Find(&brands)
-
 	result, _ := json.Marshal(brands)
-
 	return c.SendString(string(result))
 }
 
 func (pc *productController) GetBrandDetails(c *fiber.Ctx) error {
-	brand := new(models.Brand)
 	if err := c.BodyParser(&brand); err != nil {
 		return err
 	}
 
-	return pc.db.UseGorm().First(&brand).Error
+	if err := pc.db.UseGorm().First(&brand).Error; err != nil {
+		return err
+	}
+
+	result, _ := json.Marshal(&brand)
+	return c.SendString(string(result))
 }
 
 func (pc *productController) UpdateBrand(c *fiber.Ctx) error {
-	brand := new(models.Brand)
-	if err := c.BodyParser(&brand); err != nil {
+	var updateBrand struct {
+		brand       models.Brand
+		updateType  string
+		updateValue bool
+	}
+	success := false
+
+	if err := c.BodyParser(&updateBrand); err != nil {
 		return err
 	}
 
-	return pc.db.UseGorm().Save(&brand).Error
-}
+	switch updateBrand.updateType {
+	case "update":
+		affectedRows = pc.db.UseGorm().Save(&updateBrand.brand).RowsAffected
+	case "sale":
+		affectedRows = pc.db.UseGorm().Model(&updateBrand.brand).Update("on_sale", updateBrand.updateValue).RowsAffected
+	case "active":
+		affectedRows = pc.db.UseGorm().Model(&updateBrand.brand).Update("active", updateBrand.updateValue).RowsAffected
+	}
 
-func (pc *productController) SetBrandOnSale(c *fiber.Ctx) error {
+	// This is not a batch updates
+	// Expect only 1 row changed
+	if affectedRows == 1 {
+		success = true
+	}
+	result, _ := json.Marshal(&updateBrand.brand)
 
-}
-
-func (pc *productController) SetBrandOffSale(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) DeactiveBrand(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) ReactiveBrand(c *fiber.Ctx) error {
-
+	if success {
+		return c.SendString(string(result))
+	} else {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
 }
 
 func (pc *productController) GetAllCategories(c *fiber.Ctx) error {
-	var categories []models.Category
 	pc.db.UseGorm().Where("active").Find(&categories)
-
 	result, _ := json.Marshal(categories)
-
 	return c.SendString(string(result))
 }
 
 func (pc *productController) GetCategoryDetails(c *fiber.Ctx) error {
-	category := new(models.Category)
 	if err := c.BodyParser(&category); err != nil {
 		return err
 	}
 
-	return pc.db.UseGorm().First(&category).Error
-}
-
-func (pc *productController) UpdateCategory(c *fiber.Ctx) error {
-	brand := new(models.Brand)
-	if err := c.BodyParser(&brand); err != nil {
+	if err := pc.db.UseGorm().First(&category).Error; err != nil {
 		return err
 	}
 
-	return pc.db.UseGorm().Save(&brand).Error
+	result, _ := json.Marshal(&category)
+	return c.SendString(string(result))
 }
 
-func (pc *productController) SetCategoryOnFeatured(c *fiber.Ctx) error {
+func (pc *productController) UpdateCategory(c *fiber.Ctx) error {
+	var updateCategory struct {
+		category    models.Category
+		updateType  string
+		updateValue bool
+	}
+	success := false
 
-}
+	if err := c.BodyParser(&updateCategory); err != nil {
+		return err
+	}
 
-func (pc *productController) SetCategoryOffFeatured(c *fiber.Ctx) error {
+	switch updateCategory.updateType {
+	case "update":
+		affectedRows = pc.db.UseGorm().Save(&updateCategory.category).RowsAffected
+	case "featured":
+		affectedRows = pc.db.UseGorm().Model(&updateCategory.category).Update("featured", updateCategory.updateValue).RowsAffected
+	case "active":
+		affectedRows = pc.db.UseGorm().Model(&updateCategory.category).Update("active", updateCategory.updateValue).RowsAffected
+	}
 
-}
+	// This is not a batch updates
+	// Expect only 1 row changed
+	if affectedRows == 1 {
+		success = true
+	}
+	result, _ := json.Marshal(&updateCategory.category)
 
-func (pc *productController) DeactiveCategory(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) ReactiveCategory(c *fiber.Ctx) error {
-
+	if success {
+		return c.SendString(string(result))
+	} else {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
 }
 
 func (pc *productController) GetAllProducts(c *fiber.Ctx) error {
-	var products []models.Product
 	pc.db.UseGorm().Where("active").Find(&products)
-
 	result, _ := json.Marshal(products)
+	return c.SendString(string(result))
+}
 
+func (pc *productController) GetProductsByBrand(c *fiber.Ctx) error {
+	brand := c.Query("brand")
+	pc.db.UseGorm().Where("brand = ?", brand).Find(&products)
+	result, _ := json.Marshal(products)
+	return c.SendString(string(result))
+}
+
+func (pc *productController) GetProductsByCategory(c *fiber.Ctx) error {
+	category := c.Query("category")
+	pc.db.UseGorm().Where("category = ?", category).Find(&products)
+	result, _ := json.Marshal(products)
 	return c.SendString(string(result))
 }
 
 func (pc *productController) GetProductDetails(c *fiber.Ctx) error {
-	product := new(models.Product)
 	if err := c.BodyParser(&product); err != nil {
 		return err
 	}
 
-	return pc.db.UseGorm().First(&product).Error
+	if err := pc.db.UseGorm().First(&product).Error; err != nil {
+		return err
+	}
+
+	result, _ := json.Marshal(&product)
+	return c.SendString(string(result))
 }
 
 func (pc *productController) UpdateProduct(c *fiber.Ctx) error {
+	var updateProduct struct {
+		product     models.Product
+		updateType  string
+		updateValue bool
+	}
+	success := false
 
-}
+	if err := c.BodyParser(&updateProduct); err != nil {
+		return err
+	}
 
-func (pc *productController) ChangeProductBrand(c *fiber.Ctx) error {
+	switch updateProduct.updateType {
+	case "update":
+		affectedRows = pc.db.UseGorm().Save(&updateProduct.product).RowsAffected
+	case "active":
+		affectedRows = pc.db.UseGorm().Model(&updateProduct.product).Update("active", updateProduct.updateValue).RowsAffected
+	}
 
-}
+	// This is not a batch updates
+	// Expect only 1 row changed
+	if affectedRows == 1 {
+		success = true
+	}
+	result, _ := json.Marshal(&updateProduct.product)
 
-func (pc *productController) ChangeProductCategory(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) SetProductOnSale(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) SetProductOffSale(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) DeactiveProduct(c *fiber.Ctx) error {
-
-}
-
-func (pc *productController) ReactiveProduct(c *fiber.Ctx) error {
-
+	if success {
+		return c.SendString(string(result))
+	} else {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
 }
