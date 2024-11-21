@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -32,8 +33,10 @@ type AccountController interface {
 	// returns an error if unable to find the Account
 	GetAccount(c *fiber.Ctx) error
 
-	// Get all roles
-	GetAllRoles(ctx context.Context)
+	GetAllRoles(c *fiber.Ctx) error
+
+	// load all roles from cache
+	LoadRoles(ctx context.Context)
 
 	// Create an identity role.
 	// returns an error if similar role exits
@@ -56,7 +59,6 @@ var (
 	rolesKey   = "roles"
 	unverified = "unverified"
 	verified   = "verified"
-	admin      = "Admin"
 )
 
 type accountController struct {
@@ -188,9 +190,9 @@ func (ac *accountController) CreateRole(c *fiber.Ctx) error {
 	}
 
 	// FIX THIS
-	if role.Id != uuid.Nil {
-		role.Id = uuid.New()
-	}
+	// if role.Id != uuid.Nil {
+	// 	role.Id = uuid.New()
+	// }
 
 	if err := ac.db.UseGorm().Create(&role).Error; err != nil {
 		return err
@@ -234,8 +236,22 @@ func (ac *accountController) UpdateRole(c *fiber.Ctx) error {
 	}
 }
 
-func (ac *accountController) GetAllRoles(ctx context.Context) {
-	ac.db.UseGorm().Where("is not deprecated").Order("id asc").Find(&roles)
+func (ac *accountController) GetAllRoles(c *fiber.Ctx) error {
+	if err := ac.redis.HGetAll(c.Context(), rolesKey).Scan(&roles); err != nil {
+		fmt.Println("Roles not found in cache")
+	}
+
+	if reflect.ValueOf(&roles).IsZero() {
+		ac.db.UseGorm().Where("deprecated is not true").Find(&roles)
+	}
+
+	result, _ := json.Marshal(roles)
+
+	return c.SendString(string(result))
+}
+
+func (ac *accountController) LoadRoles(ctx context.Context) {
+	ac.db.UseGorm().Where("deprecated is not true").Order("id asc").Find(&roles)
 	ac.redis.Set(ctx, rolesKey, &roles, 0)
 }
 
@@ -250,7 +266,7 @@ func getRole(ctx context.Context, redis redis.Client, db database.Service, roleN
 		}
 	}
 
-	if err := db.UseGorm().Where("role = ? and is not deprecated", roleName).First(&role).Error; err != nil {
+	if err := db.UseGorm().Where("role = ? and deprecated is not true", roleName).First(&role).Error; err != nil {
 		panic("Unable to get role")
 	}
 

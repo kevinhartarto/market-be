@@ -27,7 +27,7 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 
 	// Login and Register APIs
 	account := controllers.NewAccountController(db, redis)
-	account.GetAllRoles(context)
+	account.LoadRoles(context)
 	fmt.Println("Roles loaded")
 
 	accountAPI := marketAPI.Group("/user")
@@ -47,8 +47,11 @@ func NewHandler(db database.Service, redis *redis.Client) *fiber.App {
 	// For admin and owner roles
 	superUserAPI := accountAPI.Group("/super")
 	superUserAPI.Get("/reload", func(c *fiber.Ctx) error {
-		account.GetAllRoles(context)
+		account.LoadRoles(context)
 		return c.SendStatus(fiber.StatusOK)
+	})
+	superUserAPI.Get("/roles", func(c *fiber.Ctx) error {
+		return account.GetAllRoles(c)
 	})
 	superUserAPI.Post("/role", func(c *fiber.Ctx) error {
 		return account.CreateRole(c)
