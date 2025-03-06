@@ -45,7 +45,12 @@ func StartDB() Service {
 		return dbInstance
 	}
 
-	connStr := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable", username, password, host, port, database)
+	connStr := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
+		username,
+		password,
+		host,
+		port,
+		database)
 	sqlDB, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatal(err)
